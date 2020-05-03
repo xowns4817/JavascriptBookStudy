@@ -9,7 +9,7 @@ const data = {
 
 function weighted_random(weights) {
   const sum = weights.reduce((acc, cur) => acc + cur, 0);
-  let randomValue = Math.random() * (sum - 0);
+  let randomValue = Math.random() * sum;
   for (let i = 0; i < weights.length; i++) {
     randomValue -= weights[i];
     if (randomValue < 1) return i;
