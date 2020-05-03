@@ -14,7 +14,6 @@ function weighted_random(weights) {
     randomValue -= weights[i];
     if (randomValue < 1) return i;
   }
-  return false;
 }
 
 function pickmeup() {
