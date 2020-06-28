@@ -354,7 +354,7 @@ function result(data) {
   console.log(a);
 }
 var a = 0;
-ajax("..미리 캐시된 URL..", result);
+ajax("..미리 캐시된 URL..", asyncify(result));
 a++;
 ```
 AJAX 요청을 캐시한 상태에서 즉각 콜백을 호출하여 귀결하거나, 데이터를 다른 곳에서 가져오기 때문에 나중에 비동기적으로 완료 - 결과값은 항상 1  
