@@ -4,7 +4,7 @@ const data = {
   조성동: 100,
   하현관: 90,
   김강수: 70,
-  안민원: 100,
+  안민원: 90,
 };
 
 function weighted_random(weights) {
