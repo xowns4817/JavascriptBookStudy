@@ -1,0 +1,302 @@
+
+### Chapter 3 프라미스
+
+- 콜백의 경우 호출하게 되면 제어가 역전되어 결과를 언제 받을 지 알 수 없음. 
+- 콜백의 경우 콜백이 여러개 중첩되면 콜백 지옥이 생겨 가독성이 매우 떨어짐
+-> 이런 문제를 해결하기 위해 프라미스가 등장함
+
+#### 3.1 프라미스란
+
+- 미랫값은 성공 아니면 실패이다.
+
+#### 지금과 나중값
+
+- x + y 연산을 할때 당연히 x, y 모두 이미 세팅된 값이라고 본다. -> x, y 값은 귀결됬다.
+- x값이 아직 세팅하기 전이므로 NaN이 출력된다.
+```
+ var x, y = 2;
+ console.log( x + y );; // NaN 
+```
+
+- x랑 y를 더하라. 둘 중 하나라도 값이 없으면 기다려라. ( 콜백으로 작성 )
+- case 1 : fetchX return -> fetchY return
+- case 2 : fetchY return -> fetchX return
+
+```
+ function add(getX, getY, callback) {
+   var x, y;
+   getX ( function(xVal) {
+	x = xVal;
+	if( y != undefined) {
+	    callback( x + y );
+	}
+   }); // getX 호출
+   getY ( function(yVal) {
+	y = yVal;
+	if( x != undefined ) {
+	    callback( x + y );
+	}
+   }); // getY 호출
+ }
+
+ add ( fetchX, fetchY, function(sum) {
+	console.log( sum );
+ });
+```
+
+#### 프라미스 값
+- x + y 예제를 프라미스 함수로 표현
+
+```
+    function add(xPromise, yPromise) {
+        return Promise.all([xPromise, yPromise])    
+    
+        .then(function(values){
+            return values[0] + values[1];
+        });
+    }
+
+
+    // 'fetchX()'와 'fetchY()'는 각자의 값을 가진 프라미스를 반환한다.
+    add(fetchX, fetchY).then(function(sum) {
+        console.log(sum);
+    }
+
+```
+
+- 실제 동작하는 코드
+```
+const promise1 = new Promise((resolve, reject) => {
+    setTimeout(() => {
+        console.log("setTimeout 1초");
+        resolve(1);
+    }, 1000)
+});
+
+const promise2 = new Promise((resolve, reject) => {
+  setTimeout(function( ) {
+    console.log("setTimeout 3 초");
+    resolve(3);
+  }, 3000)
+});
+
+const promise3 = new Promise((resolve, reject) => {
+    setTimeout(function( ) {
+      console.log("setTimeout 5 초");
+      resolve(5);
+    }, 5000)
+  });
+
+function add(xPromise, yPromise, zPromise) {
+    return Promise.all([xPromise, yPromise, zPromise]).then((values) => {
+        console.log(values);
+        //throw new error("에러 !");
+        return values[0] + values[1] + values[2];
+    });
+}
+
+add(promise1, promise2, promise3).then(function(result){
+    foo.bar();
+    console.log(result);
+}, function(err) {
+    console.error("error : ", err);
+}).catch((e) =>{
+    console.log("catch error : ", e);
+});
+
+```
+
+- 프라미스 에러처리
+
+```
+add( fetchX( ), fetchY( ))
+.then((sum) => {
+    // 성공
+    console.log( sum );
+},
+(err) => {
+    // 실패
+    console.error( err );
+}
+;
+
+```
+
+##### 3.1.2 완료 이벤트
+- 프라미스 각각은 미랫값으로서 작동하지만 프라미스의 귀결은 비동기 작업의 여러 단계를 '흐름제어'하기 위한 체계라고 볼 수 있다.
+- 어떤 작업을 하려고 foo( ) 함수를 부른다. -> 다음 단계로 진핼할 수 있게끔 foo( )의 완료 상태를 알림 받을 방법이 필요하다.
+- 전통적인 자바스크립트 사고 방식에서는 알림 자체를 하나의 이벤트로 보고 리스닝한다. ( 콜백에서의 알림은 콜백함수 호출 )
+- but, 프라미스에서는 이 관계가 역전되어 foo( )에서의 이벤트를 리스닝하고 있다가 알림을 받게되면 다음으로 진행한다.
+
+```
+ foo(x) {
+     // 시간이 오래 걸리는 작업
+ }
+
+ foo(42);
+
+ on (foo "완료") {
+     // 성공 ! 다음단계로 이동
+ }
+ on (foo "에러"){
+     // 실패
+ }
+```
+
+- foo( )를 부른 뒤 2개의 이벤트 리스너를 설정한다. foo를 호출하여 나올 수 있는 결과로는 성공 아니면 실패 이 두가지 뿐이다.
+
+```
+ function foo(x) {
+    // 시간이 오래 걸리는 작업 실행 ( 비동기 )
+     return listener;
+ }
+
+ var evt = foo(42);
+
+ evt.on("completion", function() {
+     // 다음단계로 이동
+ });
+ evt.on("failure", function(err){
+     // foo( ) 에서 에러 발생 !
+ })
+
+```
+
+#### 3.3 프라미스 믿음
+
+- 콜백만 사용한 코드의 믿음성 문제
+-- 너무 일찍 콜백을 호출
+-- 너무 늦게 콜백을 호출 ( 또는 전혀 호출하지 않음)
+-- 너무 적게, 아니면 너무 많이 콜백을 호출
+-- 필요한 환경/인자를 정상적으로 콜백에 전달 못함
+-- 발생 가능한 에러/예외를 무시함
+
+##### 프라미스 스케줄링의 기벽
+- 별개의 두 프라미스 에서 연쇄된 콜백 사이의 상대적은 실행 순서는 장담할 수 없다.  ( 프로미스 내부에는 결국 비동기 코드 호출 -> 비동기 코드가 완료되면 resolve or reject)
+
+```
+ var p3 = new Promise( function (resolve, reject) {
+     resolve("B");
+ });
+
+ var p1 = new Promise( function (resolve, reject) {
+     resolve(p3);
+ });
+
+ var p2 = new Promise( function (resolve, reject) {
+     resolve("A");
+ });
+
+ p1.then(function(v){
+     console.log(v);
+ });
+
+ p2.then(function(v){
+     console.log(v);
+ });
+
+ // A B (질문)
+```
+##### 3.3.3 한번도 콜백을 안 호출
+- Promise.race로 해결 가능
+
+```
+// 프라미스를 타임아웃 시키는 유틸리티
+function timeoutPromise(delay) {
+    return new Promise( function(resolve, reject){
+        setTimeout( function( ){
+            reject("타임아웃!");
+        }, delay);
+    })
+}
+
+Promise.race([foo(), timeoutPromise(3000)])
+.then(function(){
+    // foo 호출 !
+}),
+function(err) {
+    // 'foo'에서 에러가 났거나, timeout이 발생한 경우.
+}
+
+```
+
+##### 3.3.6 에러/예외 삼키기
+- 프로미스를 버리면 ? ( Promise에서 reject 콜백을 호출하면 ?) 그 값은 버림 콜백으로 전달된다.
+- reject를 호출하는 것 뿐만 아니라 프라미스가 생성 중 또는 귀결을 기다리는 도중 언제라도 자바스크립트 에러가 발생하면 프라미스를 강제로 버린다.
+
+```
+   var p = new Promise( function(resolve, reject) {
+       foo.bar( ); // 'foo'는 정의된 바 없으니 에러가 난다.
+       resolve( 42 ); // 실행되지 않는다.
+   });
+
+   p.then(
+       function fulfilled( ) {
+           // 실행되지 않는다.
+       },
+       function rejected(err) {
+           // 'foo.bar( )'에서 발생한 자바스크립트 예외는 프라미스 버림 콜백에서 잡을 수 있다.
+       }
+   )
+```
+
+- 프라미스는 정상적으로 이루어졌으나 이를 감지하는 코드 ( then( ) 에 등록한 콜백 ) 에서 자바스크립트 예외가 발생하면 어떻게 될까 ?
+
+```
+    var p = new Promise ( function(resolve, reject){
+        resolve(42);
+    });
+
+    p.then(
+        function fulfilled(msg) {
+            foo.bar();
+            console.log(msg); // 실행되지 않음
+        },
+        function rejected(err) {
+            // 실행되지 않음
+        }
+    ).catch((e) => {
+      // 'foo.bar()'의 에러는 여기서 잡음.  
+    });
+
+```
+
+##### 3.3.7 미더운 프라미스 ?? ( 이부분 작성중 )
+
+#### 3.4 연쇄 흐름
+
+- 프라미스에 then( )을 부를 때마다 생성하여 반환하는 함수는 새 프라미스를 계속 연쇄할 수 있다.
+- then( )의 이룸 콜백 함수(첫 번째 인자)가 반환한 값은 어떤 값이든 자동으로 (첫 번째 지점에서) 연쇄된 프라미스의 이룸으로 생성된다.
+
+```
+    var p = Promise.resolve(21); 
+    var p2 = p.then(function(v) {
+        console.log(v); // 21
+        return v*2;
+    });  / == Promise.resolve(42);
+     
+     // 'p2'를 연쇄한다.
+     p2.then(function(v){
+         console.log(v); // 42
+     })
+```
+
+- 변수를 선언하지 않고 연쇄하는 방법 ( then을 연쇄하면 새 프라미스가 자동으로 생성된다. )
+```
+    var p = Promise.resolve(21);
+    p.then( function(v) {
+        console.log(v); // 21
+        return v * 2; // 연쇄된 프라미스를 이룸
+    }).then(function(v) {
+        console.log(v); // 42
+    })
+```
+
+- 위 예제는 1단계 then에서 바로 return을 했기 때문에 연쇄된 2단계 프라미스가 즉시 이루어짐
+- 만약, 1단계의 비동기 작업을 기다렸다 해당 결과를 받아서 2단계 프라미스로 넘어가려면 ??
+
+```
+    var p = Promise.revole(21);
+
+
+```
