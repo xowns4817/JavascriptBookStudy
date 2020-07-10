@@ -555,7 +555,264 @@ Promise.resolve(foo(42)).then(function (v) {
   console.log(v);
 });
 ```
+
 ### 3.3.8 믿음 형성
 
 프라미스는 콜백에 '믿음'의 의미를 증강시킨 패턴. 좀 더 타당하고 미더운 방식으로 작동  
-콜백의 '제어의 역전'을 다시 역전하여 비동기 코드에 대한 믿을만한 체계에 제어권을 다시 반환한 셈  
+콜백의 '제어의 역전'을 다시 역전하여 비동기 코드에 대한 믿을만한 체계에 제어권을 다시 반환한 셈
+
+## 3.4 연쇄 흐름
+
+프라미스는 '이것-다음-저것' 식의 단일 단계 작업만을 대상으로 만들어진 체계가 아님  
+여러 개를 길게 늘어놓으면 일련의 비동기 단계를 나타낼 수 있음
+
+프라미스에 내재된 두 가지 작동 방식에 의해 가능
+
+- 프라미스에 then()을 부를 때마다 생성하여 반환하는 새 프라미스를 계속 연쇄 가능
+- then()의 이룸 콜백 함수(첫 번째 인자)가 반환한 값은 어떤 값이든 자동으로 (첫 번째 지점에서) 연쇄된 프라미스의 이룸으로 세팅됨
+
+```javascript
+var p = Promise.resolve(21);
+var p2 = p.then(function (v) {
+  console.log(v); //21
+  //'p2'는 이룸(결과값 42)
+  return v * 2;
+});
+// p2를 연쇄함
+p2.then(function (v) {
+  console.log(v); //42
+});
+```
+
+v _ 2 (42)를 반환하면서 첫 변째 then() 호출이 만들어준 신생 프라미스 p2를 이룸  
+p2의 then()을 호출하면 return v _ 2;에서 이룸값을 받음
+
+임시로 쓸 변소 p2(p3, p4, ...)를 계속 선언하는 것은 번거로우므로 변수 선언 없이 연쇄하면 됨
+
+```javascript
+var p = Promise.resolve(21);
+p.then(function (v) {
+  console.log(v); //21
+  //'p2'는 이룸(결과값 42)
+  return v * 2;
+})
+  // 프라미스 연쇄
+  .then(function (v) {
+    console.log(v); //42
+  });
+```
+
+비동기 시퀀스로 봤을 때 첫 번째 then()은 1단계, 두 번째 then()은 2단계에 해당  
+이전 단계 then()을 연쇄하면 새 프라미스가 자동으로 생성됨
+
+프라미스 시퀀스가 각 단계마다 비동기적으로 작동하게 만드는 핵심 - Promise.resolve()에 넘긴 값이 어떤 최종값이 아닌 프라미스/데너블일 때 Promise.resolve()의 작동 로직  
+Promise.resolve()는 진짜 프라미스를 받으면 도로 뱉어내며, 데너블을 받으면 일단 풀어보고 아니면 원하는 값이 나올 때까지 재귀적으로 계속 풀어봄
+
+이룸/버림 처리기에서 데너블/프라미스를 반환해도 마찬가지로 풀어봄
+
+```javascript
+var p = Promise.resolve(21);
+p.then(function (v) {
+  console.log(v); //21
+
+  // 프라미스 생성, 반환
+  return new Promise(function (resolve, reject) {
+    resolve(v * 2); // 결과값 42
+  });
+})
+  // 프라미스 연쇄
+  .then(function (v) {
+    console.log(v); //42
+  });
+```
+
+감싼 프라미스에 비동기성을 부여해도 작동 방식은 동일
+
+```javascript
+var p = Promise.resolve(21);
+p.then(function (v) {
+  console.log(v); //21
+
+  // 프라미스 생성, 반환
+  return new Promise(function (resolve, reject) {
+    setTimeout(function () {
+      resolve(v * 2); // 결과값 42
+    }, 100);
+  });
+})
+  // 프라미스 연쇄
+  .then(function (v) {
+    console.log(v); //42
+  });
+```
+
+변환값이 명시적이지 않으면 암시적으로 undefined로 할당되며 프라미스가 서로 연쇄되는 방식은 변환 없음  
+따라서 프라미스 귀결은 그 다음 단계로의 진행을 신호
+
+(귀결 메시지 없이) 지연-프라미스 생성을 일반화시켜 단계가 많을 경우에도 재사용할 수 있는 유틸리티 코드
+
+```javascript
+function delay(time) {
+  return new Promise(function (resolve, reject) {
+    setTimeout(resolve, time);
+  });
+}
+dely(100) // 1번 단계
+  .then(function STEP2() {
+    console.log("2번 단계(100ms 후)");
+    return delay(200);
+  })
+  .then(function STEP3() {
+    console.log("3번 단계(200ms 더 경과 후)");
+  })
+  .then(function STEP4() {
+    console.log("4번 단계(다음 작업)");
+    return delay(50);
+  })
+  .then(function STEP5() {
+    console.log("5번 단계(50ms 더 경과 후)");
+  });
+//...
+```
+
+전달 메시지가 없는 지연 시퀀스는 프라미스 흐름 제어를 유용하게 활용한 사례라고 볼 수 없음  
+AJAX 요청을 하는 예제
+
+```javascript
+// 프라미스-인식형 ajax
+function request(url) {
+  return new Promise(function (resolve, reject) {
+    // ajax() 콜백이 이 프라미스의 resolve() 함수
+    ajax(url, resolve);
+  });
+}
+```
+
+ajax() 호출의 완료를 가리키는 프라미스를 만드는 request() 유틸리티를 먼저 정의
+
+```javascript
+request("http://some.url.1/")
+  .then(function (response1) {
+    return request("http://some.url.2/?v=" + response1);
+  })
+  .then(function (response2) {
+    console.log(response2);
+  });
+```
+
+이러한 프라미스 연쇄는 다단계 비동기 시퀀스에서 흐름 제어 뿐만 아니라 단계와 단계 사이에 메시지 전달 채널로도 쓰임
+
+프라미스 연쇄의 어느 단계에서 문제가 발생하는 경우  
+에러/예외는 프라미스 단위로 한정되므로 전체 연쇄 어느 곳에서 난 에러라도 모두 잡아 해당 지점부터 리셋하여 연쇄를 다시 정상 가동
+
+```javascript
+// 1단계
+request("http://some.url.1/")
+  // 2단계
+  .then(function (response1) {
+    foo.bar(); // 정의되지 않음 - 에러
+    //실행되지 않음
+    return request("http://some.url.2/?v=" + response1);
+  })
+  // 3단계
+  .then(
+    function fulfilled(response2) {
+      // 실행되지 않음
+    },
+    // 버림 처리기
+    function rejected(err) {
+      console.log(err);
+      return 42;
+    }
+  )
+  // 4단계
+  .then(function (msg) {
+    console.log(msg); //42
+  });
+```
+
+2단계에서 에러 발생 시 3단계 버림 처리기가 이를 잡아 필요시 어떤 값을 반환해(42) 다음 4단계 프라미스가 이루어지게 함  
+전체 연쇄는 다시 이룸 상태로 되돌아감
+
+프라미스의 then() 호출 시 이룸 처리기만 넘기면 버림 처리기는 기본 처리기로 대체됨
+
+```javascript
+var p = new Promise(function (resolve, reject) {
+  reject("reject");
+});
+var p2 = p.then(
+  function fulfilled() {
+    //실행되지 않음
+  }
+  /*
+    버림 처리기가 생략되거나 함수 아닌 다른 값이 전달되면 다음과 같은 버림 처리기가 있다고 가정하여 처리
+    function(err) {
+      throw err;
+    }
+  */
+);
+```
+
+기본 버림 처리기는 단순히 에러를 다시 던지는 역할
+
+then()에 온전한 이룸 처리기를 넘기지 않은 결우에도 기본 처리기로 자동 대체됨
+
+```javascript
+var p = Promise.resolve(42);
+p.then(
+  /*
+    이룸 처리기가 생략되거나 함수 아닌 다른 값이 전달되면 다음과 같은 버림 처리기가 있다고 가정하여 처리
+    function(v) {
+      return v;
+    }
+  */
+  null,
+  function rejected(err) {
+    // 실행되지 않음
+  }
+);
+```
+기본 이룸 처리기는 받은 값을 다음 단계(프라미스)에 그대로 전하기만 함  
+
+흐름 제어를 연쇄할 수 있는 프라미스 고유의 특징 정리
+- then()을 호출하면 그 결과 자동으로 새 프라미스를 생성하여 반환
+- 이룸/버림 처리기 안에서 어떤 값을 반환하거나 예외를 던지면 이에 따라 (연쇄 가능한) 새 프라미스가 귀결됨
+- 이룸/버림 처리기가 반환한 프라미스는 풀린 상태로 그 귀결 값이 무엇이든 간에 결국 현재의 then()에서 반환된, 연쇄된 프라미스의 귀결 값이 됨  
+
+### 3.4.1 용어 정의: 귀결, 이룸, 버림
+
+Promise 생성자
+```javascript
+var p = new Promise(function(X, Y) {
+  // x(): 이룸
+  // Y(): 버림
+});
+```
+
+'귀결(resolve)' - 명확하게 '결과는 이룸 아니면 버림'이라는 맥락으로 쓰일 때 그 의미가 더 분명하고 정확
+```javascript
+var rejectedTh = {
+  then: function(resolved, rejected) {
+    rejected("허걱");
+  }
+};
+var rejectedPr = Promise.resolve(rejectedTh);
+```
+다 풀린 상태가 버림이면 Promise.resolve()가 반환한 프라미스도 버림 상태  
+실제 결과는 이룸, 버림 둘 중 하나 - Promise.resolve()가 적절한 메서드명인 이유  
+
+Promise() 생성자의 첫 번째 콜백 인자는 데너블  
+```javascript
+var rejectedPr = new Promise(function(resolve, reject) {
+  // 버림 프라미스로 귀결
+  resolve(Promise.reject("허걱"));
+});
+rejectedPr.then(
+  function fulfilled() {
+    // 실행되지 않음
+  },
+  function rejected(err) {
+    console.log(err); // 허걱
+  }
+)
+```
